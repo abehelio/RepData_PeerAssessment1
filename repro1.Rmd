@@ -1,0 +1,98 @@
+#Reproducible Research: Peer Assessment 1
+
+##Loading and preprocessing the data
+
+First, we download the zip file, unzip it and load the data to variable data:
+
+```{r}
+temp <- tempfile()
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip",temp)
+data <- read.csv(unz(temp, "activity.csv"))
+unlink(temp)
+```
+
+Then, we convert date to the date format:
+
+```{r}
+data$date <- as.Date(data$date, "%Y-%m-%d")
+```
+
+##What is mean total number of steps taken per day?
+
+Using the plyr package, we can aggregate by date adding all the steps for each day. We create a histogram of sum of steps per day:
+
+```{r}
+library(plyr)
+stepsperday <- ddply(data[!is.na(data$steps),], .(date),summarise,nsteps = sum(steps, na.rm=TRUE))
+hist(stepsperday$nsteps)
+```
+
+The mean and median of number of steps per day are as following:
+
+```{r}
+mean(stepsperday$nsteps)
+median(stepsperday$nsteps)
+```
+
+##What is the average daily activity pattern?
+
+First of all, we use the ddply function to aggregate by interval this time, and then we plot this in a graph: 
+
+```{r}
+avgstepsperinterval <- ddply(data[!is.na(data$steps),], .(interval),summarise,avgsteps = mean(steps, na.rm=TRUE))
+plot(avgstepsperinterval$interval, avgstepsperinterval$avgsteps, type = "l")
+avgstepsperinterval[which.max(avgstepsperinterval$avgsteps),]
+```
+
+From the result above, we can see that the interval 835 to 840 is the interval with the maximum average steps.
+
+##Imputing missing values
+
+We can calculate the number of NAs in the data set using the following function:
+
+```{r}
+c(sum(is.na(data$steps)), sum(is.na(data$steps))/nrow(data))
+```
+
+We can see that the number of NAs is 2304, which is quite a high number, around 13 % of the data.
+
+To fill in this data, I decided to input the mean number of steps for the particular interval whenever there is an NA value. This is done this way:
+
+```{r}
+newdata <- data
+
+for (i in 1:nrow(newdata)) {
+  if(is.na(newdata[i,]$steps)) {
+    newdata[i,]$steps <- round(avgstepsperinterval[avgstepsperinterval$interval==newdata[i,]$interval,]$avgsteps)
+  }
+}
+
+newstepsperday <- ddply(newdata, .(date),summarise,nsteps = sum(steps))
+hist(newstepsperday$nsteps)
+mean(newstepsperday$nsteps)
+median(newstepsperday$nsteps)
+```
+
+The histogram and mean and median values are reported above. We can see they are very close to the mean and median with NAs. That happens because of the simple strategy I devised, which substituted the values with the mean for each interval. Had I chosen a different strategy, such as using the minimum instead of the mean, we would have seen a bigger difference. Therefore it is important to devise a strategy that minimizes the impact on these variables.
+
+##Are there differences in activity patterns between weekdays and weekends?
+
+Firstly, I used a mathematical formula to decide which date is a weekday and which date is a weekend. Basically, this formula gets the number of the weekday (0 is sunday, 1 is monday, ..., 6 is saturday), divided by six and subtracted the absolute value. Whatever was not zero, was a weekday.
+
+```{r}
+weekday <- factor(ceiling(as.integer(format(newdata$date, '%w'))/6 - floor(as.integer(format(newdata$date, '%w'))/6)), levels = c(0,1), labels = c("Weekend", "Weekday"))
+
+newdata$weekday <- weekday
+```
+
+Then we aggregate the data using ddply again, and plot the average number of steps per weekday or weekend:
+
+```{r}
+newstepsperday2 <- ddply(newdata, .(interval, weekday),summarise,nsteps = mean(steps))
+
+library(lattice)
+xyplot(nsteps ~ interval | weekday,newstepsperday2,type = "l", layout = c(1, 2), 
+    xlab = "Interval", ylab = "Number of steps")
+```
+
+We can see there are differences, weekend seems to be more spread out through the day than weekdays, suggesting this person works in an office environment.
